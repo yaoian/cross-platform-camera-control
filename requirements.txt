@@ -1,0 +1,19 @@
+# 跨平台视频设备控制工具依赖
+
+# 核心依赖
+opencv-python>=4.5.0
+
+# Windows平台依赖
+pywin32>=227; sys_platform == "win32"
+
+# Linux平台依赖  
+v4l2-python>=0.2.0; sys_platform == "linux"
+
+# macOS平台依赖
+pyobjc>=8.0; sys_platform == "darwin"
+pyobjc-framework-AVFoundation>=8.0; sys_platform == "darwin"
+
+# 开发依赖（可选）
+pytest>=6.0.0
+black>=21.0.0
+flake8>=3.8.0
