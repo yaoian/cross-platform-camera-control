@@ -17,12 +17,12 @@ A cross-platform video device control tool compatible with v4l2-ctl, supporting 
 
 ```bash
 # Install from source
-git clone https://github.com/yaoian/cross-platform-video-control.git
-cd cross-platform-video-control
+git clone https://github.com/yaoian/cross-platform-camera-control.git
+cd cross-platform-camera-control
 pip install -r requirements.txt
 
 # Or install as package
-pip install cross-platform-video-control
+pip install cross-platform-camera-control
 ```
 
 ### Basic Usage
@@ -169,4 +169,4 @@ MIT License - Same as the original project
 
 ## 📞 Support
 
-If you encounter any issues or have questions, please [open an issue](https://github.com/yaoian/cross-platform-video-control/issues) on GitHub.
+If you encounter any issues or have questions, please [open an issue](https://github.com/yaoian/cross-platform-camera-control/issues) on GitHub.

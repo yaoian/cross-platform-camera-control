@@ -34,7 +34,7 @@ setup(
     description="Cross-platform video device control tool compatible with v4l2-ctl",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yaoian/cross-platform-video-control",
+    url="https://github.com/yaoian/cross-platform-camera-control",
     packages=find_packages(),
     py_modules=[
         'video_device_controller',
@@ -87,9 +87,9 @@ setup(
         'opencv', 'device-control', 'multimedia', 'webcam'
     ],
     project_urls={
-        "Bug Reports": "https://github.com/yaoian/cross-platform-video-control/issues",
-        "Source": "https://github.com/yaoian/cross-platform-video-control",
-        "Documentation": "https://github.com/yaoian/cross-platform-video-control/blob/main/README.md",
+        "Bug Reports": "https://github.com/yaoian/cross-platform-camera-control/issues",
+        "Source": "https://github.com/yaoian/cross-platform-camera-control",
+        "Documentation": "https://github.com/yaoian/cross-platform-camera-control/blob/main/README.md",
     },
     include_package_data=True,
     zip_safe=False,
