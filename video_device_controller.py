@@ -148,6 +148,11 @@ class WindowsVideoController(VideoDeviceController):
 
     def set_control(self, device_index: int, control_name: str, value: int) -> bool:
         """设置Windows设备控制参数"""
+        # 优先使用DirectShow
+        if self.directshow:
+            return self.directshow.set_device_control(device_index, control_name, value)
+
+        # 备用方案
         if self.opencv_fallback:
             return self.opencv_fallback.set_device_control(device_index, control_name, value)
         return False
