@@ -70,15 +70,47 @@ def list_controls(controller: VideoDeviceController, device_index: int):
     if not controls:
         print(f"设备 /dev/video{device_index} 无可用控制参数")
         return
-    
-    print("User Controls")
-    print()
-    
+
+    # 分组显示控制参数
+    user_controls = []
+    camera_controls = []
+
     for ctrl in controls:
-        auto_flag = " (auto)" if ctrl.auto_supported else ""
-        print(f"                     {ctrl.name} 0x{id(ctrl):08x} (int)    : "
-              f"min={ctrl.min_value} max={ctrl.max_value} step={ctrl.step} "
-              f"default={ctrl.default_value} value={ctrl.current_value}{auto_flag}")
+        if ctrl.name in ['pan', 'tilt', 'roll', 'zoom', 'focus', 'focus_automatic']:
+            camera_controls.append(ctrl)
+        else:
+            user_controls.append(ctrl)
+
+    # 显示User Controls
+    if user_controls:
+        print("User Controls")
+        print()
+
+        for ctrl in user_controls:
+            # 确定控制类型
+            ctrl_type = "(bool)" if ctrl.name.endswith("_automatic") else "(int)"
+
+            # 格式化输出，模仿原版格式
+            name_padded = f"{ctrl.name:>25}"
+            print(f"{name_padded} {ctrl_type}    : "
+                  f"min={ctrl.min_value} max={ctrl.max_value} step={ctrl.step} "
+                  f"default={ctrl.default_value} value={ctrl.current_value}")
+
+    # 显示Camera Controls
+    if camera_controls:
+        print()
+        print("Camera Controls")
+        print()
+
+        for ctrl in camera_controls:
+            # 确定控制类型
+            ctrl_type = "(bool)" if ctrl.name.endswith("_automatic") else "(int)"
+
+            # 格式化输出，模仿原版格式
+            name_padded = f"{ctrl.name:>25}"
+            print(f"{name_padded} {ctrl_type}    : "
+                  f"min={ctrl.min_value} max={ctrl.max_value} step={ctrl.step} "
+                  f"default={ctrl.default_value} value={ctrl.current_value}")
 
 
 def set_control(controller: VideoDeviceController, device_index: int, control_name: str, value: int):

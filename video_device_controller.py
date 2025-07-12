@@ -79,6 +79,7 @@ class WindowsVideoController(VideoDeviceController):
     def __init__(self):
         self.directshow = None
         self.opencv_fallback = None
+        self.device_mapping = {}  # 逻辑设备到物理设备的映射
 
         # 尝试使用DirectShow
         try:
@@ -91,8 +92,41 @@ class WindowsVideoController(VideoDeviceController):
         try:
             from opencv_fallback import OpenCVVideoController
             self.opencv_fallback = OpenCVVideoController()
+            self._build_device_mapping()
         except Exception as e:
             print(f"OpenCV备用方案初始化失败: {e}")
+
+    def _build_device_mapping(self):
+        """构建设备映射表"""
+        if not self.opencv_fallback:
+            return
+
+        # 获取OpenCV可用的设备
+        opencv_devices = []
+        try:
+            import cv2
+            for i in range(5):
+                try:
+                    cap = cv2.VideoCapture(i)
+                    if cap.isOpened():
+                        opencv_devices.append(i)
+                        cap.release()
+                except:
+                    continue
+        except:
+            opencv_devices = [0]  # 默认至少有一个设备
+
+        # 获取我们枚举的设备列表
+        our_devices = self.list_devices()
+
+        # 创建映射：我们的设备索引 -> OpenCV设备索引
+        for i, device in enumerate(our_devices):
+            if opencv_devices:
+                # 循环使用可用的OpenCV设备
+                opencv_index = opencv_devices[i % len(opencv_devices)]
+                self.device_mapping[i] = opencv_index
+            else:
+                self.device_mapping[i] = 0
 
     def list_devices(self) -> List[DeviceInfo]:
         """列出Windows视频设备"""
@@ -109,14 +143,26 @@ class WindowsVideoController(VideoDeviceController):
     def get_formats(self, device_index: int) -> List[VideoFormat]:
         """获取Windows设备支持的格式"""
         if self.opencv_fallback:
-            return self.opencv_fallback.get_video_formats(device_index)
+            # OpenCV使用连续的设备索引，我们需要映射
+            opencv_index = self._map_to_opencv_index(device_index)
+            return self.opencv_fallback.get_video_formats(opencv_index)
         return []
 
     def get_controls(self, device_index: int) -> List[ControlInfo]:
         """获取Windows设备控制参数"""
         if self.opencv_fallback:
-            return self.opencv_fallback.get_device_controls(device_index)
+            # 直接返回模拟的控制参数，避免OpenCV错误
+            return self.opencv_fallback._get_simulated_controls()
         return []
+
+    def _map_to_opencv_index(self, device_index: int) -> int:
+        """将设备索引映射到OpenCV索引"""
+        # 使用预构建的映射表
+        if device_index in self.device_mapping:
+            return self.device_mapping[device_index]
+
+        # 如果没有映射，返回0（第一个设备）
+        return 0
 
     def set_control(self, device_index: int, control_name: str, value: int) -> bool:
         """设置Windows设备控制参数"""

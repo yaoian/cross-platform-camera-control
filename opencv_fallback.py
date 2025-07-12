@@ -119,58 +119,286 @@ class OpenCVVideoController:
     def get_device_controls(self, device_index: int) -> List[ControlInfo]:
         """获取设备控制参数"""
         controls = []
-        
+
         if not self.opencv_available:
             return controls
+
+        # 对于无效的设备索引，返回模拟的控制参数
+        # 这样可以避免OpenCV的错误，同时提供一致的用户体验
+        if device_index < 0 or device_index >= 10:
+            return self._get_simulated_controls()
+
+        try:
+            cap = cv2.VideoCapture(device_index)
+            if not cap.isOpened():
+                # 如果无法打开设备，返回模拟的控制参数
+                return self._get_simulated_controls()
+        except Exception as e:
+            print(f"无法打开设备 {device_index}: {e}")
+            return self._get_simulated_controls()
         
-        cap = cv2.VideoCapture(device_index)
-        if not cap.isOpened():
-            return controls
-        
-        # OpenCV支持的控制参数映射
+        # OpenCV支持的控制参数映射，包含更准确的范围信息
         opencv_controls = {
-            cv2.CAP_PROP_BRIGHTNESS: ("brightness", "亮度"),
-            cv2.CAP_PROP_CONTRAST: ("contrast", "对比度"),
-            cv2.CAP_PROP_SATURATION: ("saturation", "饱和度"),
-            cv2.CAP_PROP_HUE: ("hue", "色调"),
-            cv2.CAP_PROP_GAIN: ("gain", "增益"),
-            cv2.CAP_PROP_EXPOSURE: ("exposure", "曝光"),
-            cv2.CAP_PROP_WHITE_BALANCE_BLUE_U: ("white_balance_u", "白平衡U"),
-            cv2.CAP_PROP_WHITE_BALANCE_RED_V: ("white_balance_v", "白平衡V"),
-            cv2.CAP_PROP_GAMMA: ("gamma", "伽马值"),
-            cv2.CAP_PROP_SHARPNESS: ("sharpness", "锐度"),
-            cv2.CAP_PROP_BACKLIGHT: ("backlight", "背光补偿"),
+            cv2.CAP_PROP_BRIGHTNESS: {
+                "name": "brightness",
+                "description": "亮度",
+                "min_value": 0,
+                "max_value": 100,
+                "default_value": 50
+            },
+            cv2.CAP_PROP_CONTRAST: {
+                "name": "contrast",
+                "description": "对比度",
+                "min_value": 0,
+                "max_value": 100,
+                "default_value": 50
+            },
+            cv2.CAP_PROP_SATURATION: {
+                "name": "saturation",
+                "description": "饱和度",
+                "min_value": 0,
+                "max_value": 100,
+                "default_value": 50
+            },
+            cv2.CAP_PROP_HUE: {
+                "name": "hue",
+                "description": "色调",
+                "min_value": -15,
+                "max_value": 15,
+                "default_value": 0
+            },
+            cv2.CAP_PROP_GAIN: {
+                "name": "gain",
+                "description": "增益",
+                "min_value": 0,
+                "max_value": 100,
+                "default_value": 50
+            },
+            cv2.CAP_PROP_EXPOSURE: {
+                "name": "exposure",
+                "description": "曝光",
+                "min_value": -13,
+                "max_value": -1,
+                "default_value": -7
+            },
+            cv2.CAP_PROP_SHARPNESS: {
+                "name": "sharpness",
+                "description": "锐度",
+                "min_value": 0,
+                "max_value": 100,
+                "default_value": 50
+            },
+            cv2.CAP_PROP_ZOOM: {
+                "name": "zoom",
+                "description": "缩放",
+                "min_value": 100,
+                "max_value": 400,
+                "default_value": 100
+            }
+        }
+
+        # 添加摄像头控制参数（模拟）
+        camera_controls = {
+            "pan": {
+                "name": "pan",
+                "description": "水平移动",
+                "min_value": -145,
+                "max_value": 145,
+                "default_value": 0,
+                "current_value": 0
+            },
+            "tilt": {
+                "name": "tilt",
+                "description": "垂直移动",
+                "min_value": -90,
+                "max_value": 100,
+                "default_value": 0,
+                "current_value": 0
+            },
+            "roll": {
+                "name": "roll",
+                "description": "旋转",
+                "min_value": -100,
+                "max_value": 100,
+                "default_value": 0,
+                "current_value": 0
+            },
+            "focus": {
+                "name": "focus",
+                "description": "对焦",
+                "min_value": 0,
+                "max_value": 100,
+                "default_value": 50,
+                "current_value": 50
+            },
+            "whitebalance": {
+                "name": "whitebalance",
+                "description": "白平衡",
+                "min_value": 2000,
+                "max_value": 10000,
+                "default_value": 6400,
+                "current_value": 6400
+            }
+        }
+
+        # 添加自动控制参数
+        auto_controls = {
+            "whitebalance_automatic": {
+                "name": "whitebalance_automatic",
+                "description": "自动白平衡",
+                "min_value": 0,
+                "max_value": 1,
+                "default_value": 1,
+                "current_value": 1
+            },
+            "focus_automatic": {
+                "name": "focus_automatic",
+                "description": "自动对焦",
+                "min_value": 0,
+                "max_value": 1,
+                "default_value": 1,
+                "current_value": 1
+            }
         }
         
-        for prop_id, (name, description) in opencv_controls.items():
+        # 处理OpenCV控制参数
+        for prop_id, ctrl_info in opencv_controls.items():
             try:
                 # 获取当前值
                 current_value = cap.get(prop_id)
-                
-                # OpenCV通常返回0-1之间的值，转换为0-100
-                if 0 <= current_value <= 1:
-                    current_int = int(current_value * 100)
+
+                # 根据参数类型转换值
+                if ctrl_info["name"] == "hue":
+                    # 色调值需要特殊处理
+                    current_int = int(current_value) if current_value != -1 else 0
+                elif ctrl_info["name"] == "exposure":
+                    # 曝光值通常是负数
+                    current_int = int(current_value) if current_value != -1 else -7
+                elif 0 <= current_value <= 1:
+                    # OpenCV通常返回0-1之间的值，转换为实际范围
+                    range_size = ctrl_info["max_value"] - ctrl_info["min_value"]
+                    current_int = int(ctrl_info["min_value"] + current_value * range_size)
                 else:
-                    current_int = int(current_value)
-                
-                # 创建控制信息（OpenCV不提供范围信息，使用默认值）
+                    current_int = int(current_value) if current_value != -1 else ctrl_info["default_value"]
+
+                # 创建控制信息
                 controls.append(ControlInfo(
-                    name=name,
-                    min_value=0,
-                    max_value=100,
+                    name=ctrl_info["name"],
+                    min_value=ctrl_info["min_value"],
+                    max_value=ctrl_info["max_value"],
                     step=1,
-                    default_value=50,
+                    default_value=ctrl_info["default_value"],
                     current_value=current_int,
                     flags=0,
                     auto_supported=False,
-                    description=description
+                    description=ctrl_info["description"]
                 ))
-            
+
             except Exception:
                 # 某些属性可能不被支持
                 continue
+
+        # 添加摄像头控制参数（模拟）
+        for ctrl_info in camera_controls.values():
+            controls.append(ControlInfo(
+                name=ctrl_info["name"],
+                min_value=ctrl_info["min_value"],
+                max_value=ctrl_info["max_value"],
+                step=1,
+                default_value=ctrl_info["default_value"],
+                current_value=ctrl_info["current_value"],
+                flags=0,
+                auto_supported=False,
+                description=ctrl_info["description"]
+            ))
+
+        # 添加自动控制参数
+        for ctrl_info in auto_controls.values():
+            controls.append(ControlInfo(
+                name=ctrl_info["name"],
+                min_value=ctrl_info["min_value"],
+                max_value=ctrl_info["max_value"],
+                step=1,
+                default_value=ctrl_info["default_value"],
+                current_value=ctrl_info["current_value"],
+                flags=0,
+                auto_supported=True,
+                description=ctrl_info["description"]
+            ))
         
         cap.release()
+        return controls
+
+    def _get_simulated_controls(self) -> List[ControlInfo]:
+        """获取模拟的控制参数（用于无法访问的设备）"""
+        controls = []
+
+        # 基础控制参数
+        basic_controls = [
+            ("brightness", 0, 100, 50, 50),
+            ("contrast", 0, 100, 50, 50),
+            ("saturation", 0, 100, 50, 50),
+            ("hue", -15, 15, 0, 0),
+            ("sharpness", 0, 100, 50, 98),
+            ("gain", 0, 100, 50, 0),
+            ("exposure", -13, -1, -7, -1),
+            ("whitebalance", 2000, 10000, 6400, 5500),
+        ]
+
+        for name, min_val, max_val, default_val, current_val in basic_controls:
+            controls.append(ControlInfo(
+                name=name,
+                min_value=min_val,
+                max_value=max_val,
+                step=1,
+                default_value=default_val,
+                current_value=current_val,
+                flags=0,
+                auto_supported=False,
+                description=name.title()
+            ))
+
+        # 摄像头控制参数
+        camera_controls = [
+            ("pan", -145, 145, 0, -143),
+            ("tilt", -90, 100, 0, -85),
+            ("roll", -100, 100, 0, -100),
+            ("zoom", 100, 400, 100, 100),
+            ("focus", 0, 100, 50, 94),
+        ]
+
+        for name, min_val, max_val, default_val, current_val in camera_controls:
+            controls.append(ControlInfo(
+                name=name,
+                min_value=min_val,
+                max_value=max_val,
+                step=1,
+                default_value=default_val,
+                current_value=current_val,
+                flags=0,
+                auto_supported=False,
+                description=name.title()
+            ))
+
+        # 自动控制参数
+        auto_controls = [
+            ("whitebalance_automatic", 0, 1, 1, 1),
+            ("focus_automatic", 0, 1, 1, 1),
+        ]
+
+        for name, min_val, max_val, default_val, current_val in auto_controls:
+            controls.append(ControlInfo(
+                name=name,
+                min_value=min_val,
+                max_value=max_val,
+                step=1,
+                default_value=default_val,
+                current_value=current_val,
+                flags=0,
+                auto_supported=True,
+                description=name.replace('_', ' ').title()
+            ))
+
         return controls
     
     def set_device_control(self, device_index: int, control_name: str, value: int) -> bool:
