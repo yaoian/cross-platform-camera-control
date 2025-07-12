@@ -90,20 +90,66 @@ class WindowsDirectShowController:
         try:
             # 备用方法：使用WMI查询视频设备
             wmi = win32com.client.GetObject("winmgmts:")
-            video_devices = wmi.InstancesOf("Win32_PnPEntity")
 
+            # 尝试多种查询方式来找到所有视频设备
+            queries = [
+                # 图像设备类别
+                "SELECT * FROM Win32_PnPEntity WHERE ClassGuid='{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}'",
+                # USB设备中的视频设备
+                "SELECT * FROM Win32_PnPEntity WHERE DeviceID LIKE 'USB\\VID_%' AND (Name LIKE '%camera%' OR Name LIKE '%video%' OR Name LIKE '%capture%' OR Name LIKE '%insta360%')",
+                # 所有PnP设备中包含视频相关关键词的
+                "SELECT * FROM Win32_PnPEntity WHERE Name LIKE '%camera%' OR Name LIKE '%webcam%' OR Name LIKE '%video%' OR Name LIKE '%capture%' OR Name LIKE '%insta360%'"
+            ]
+
+            found_devices = set()  # 用于去重
             index = 0
-            for device in video_devices:
-                if device.Name and ("camera" in device.Name.lower() or
-                                   "webcam" in device.Name.lower() or
-                                   "video" in device.Name.lower()):
-                    devices.append(DeviceInfo(
-                        index=index,
-                        name=device.Name,
-                        path=device.DeviceID if device.DeviceID else f"\\\\?\\video{index}",
-                        description=f"/dev/video{index}"
-                    ))
-                    index += 1
+
+            for query in queries:
+                try:
+                    video_devices = wmi.ExecQuery(query)
+
+                    for device in video_devices:
+                        if device.Name and device.DeviceID:
+                            # 避免重复添加相同设备
+                            device_id = device.DeviceID
+                            if device_id in found_devices:
+                                continue
+
+                            # 检查设备是否存在且可用
+                            if hasattr(device, 'Present') and not device.Present:
+                                continue
+
+                            # 检查是否是视频设备
+                            device_name_lower = device.Name.lower()
+                            device_id_lower = device_id.lower()
+
+                            # 排除音频设备
+                            is_audio_device = any(keyword in device_name_lower for keyword in
+                                                ['麦克风', 'microphone', 'audio', 'speaker', '扬声器'])
+
+                            if is_audio_device:
+                                continue
+
+                            is_video_device = (
+                                any(keyword in device_name_lower for keyword in
+                                    ['camera', 'webcam', 'video', 'capture', 'insta360']) or
+                                ('vid_' in device_id_lower and
+                                 ('&mi_00' in device_id_lower or '&mi_02' in device_id_lower))  # 视频接口
+                            )
+
+                            if is_video_device:
+                                found_devices.add(device_id)
+                                devices.append(DeviceInfo(
+                                    index=index,
+                                    name=device.Name,
+                                    path=device_id,
+                                    description=f"/dev/video{index}"
+                                ))
+                                index += 1
+
+                except Exception as e:
+                    print(f"WMI查询失败: {query[:50]}... - {e}")
+                    continue
 
         except Exception as e:
             print(f"WMI枚举失败: {e}")
@@ -130,8 +176,8 @@ class WindowsDirectShowController:
         """使用DirectShow API枚举设备"""
         devices = []
 
-        # 暂时禁用DirectShow枚举，因为COM接口调用复杂
-        # 后续可以通过ctypes或其他方式实现
+        # 暂时跳过DirectShow直接枚举，因为COM接口在Python中比较复杂
+        # 我们将依赖改进的WMI方法来获取所有设备
         return devices
     
     def get_video_formats(self, device_index: int) -> List[VideoFormat]:
