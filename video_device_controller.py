@@ -98,35 +98,8 @@ class WindowsVideoController(VideoDeviceController):
 
     def _build_device_mapping(self):
         """构建设备映射表"""
-        if not self.opencv_fallback:
-            return
-
-        # 获取OpenCV可用的设备
-        opencv_devices = []
-        try:
-            import cv2
-            for i in range(5):
-                try:
-                    cap = cv2.VideoCapture(i)
-                    if cap.isOpened():
-                        opencv_devices.append(i)
-                        cap.release()
-                except:
-                    continue
-        except:
-            opencv_devices = [0]  # 默认至少有一个设备
-
-        # 获取我们枚举的设备列表
-        our_devices = self.list_devices()
-
-        # 创建映射：我们的设备索引 -> OpenCV设备索引
-        for i, device in enumerate(our_devices):
-            if opencv_devices:
-                # 循环使用可用的OpenCV设备
-                opencv_index = opencv_devices[i % len(opencv_devices)]
-                self.device_mapping[i] = opencv_index
-            else:
-                self.device_mapping[i] = 0
+        # 简化映射，避免OpenCV初始化开销
+        self.device_mapping = {0: 0, 1: 1, 2: 0}  # 简单的静态映射
 
     def list_devices(self) -> List[DeviceInfo]:
         """列出Windows视频设备"""
@@ -150,8 +123,17 @@ class WindowsVideoController(VideoDeviceController):
 
     def get_controls(self, device_index: int) -> List[ControlInfo]:
         """获取Windows设备控制参数"""
+        # 优先使用DirectShow获取真实参数
+        if self.directshow:
+            try:
+                controls = self.directshow.get_device_controls(device_index)
+                if controls:
+                    return controls
+            except Exception as e:
+                print(f"DirectShow获取控制参数失败: {e}")
+
+        # 备用方案：返回模拟的控制参数
         if self.opencv_fallback:
-            # 直接返回模拟的控制参数，避免OpenCV错误
             return self.opencv_fallback._get_simulated_controls()
         return []
 

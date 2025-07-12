@@ -6,8 +6,17 @@
 
 import argparse
 import sys
+import os
 from typing import Optional
 from video_device_controller import create_controller, VideoDeviceController
+
+# 抑制OpenCV错误输出
+os.environ['OPENCV_LOG_LEVEL'] = 'SILENT'
+try:
+    import cv2
+    cv2.setLogLevel(0)
+except ImportError:
+    pass
 
 
 def parse_device_path(device_path: str) -> int:
