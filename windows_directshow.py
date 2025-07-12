@@ -454,31 +454,42 @@ class WindowsDirectShowController:
                 if not (min_val <= value <= max_val):
                     return False
 
-            # 尝试OpenCV设置（简化版本）
+            # 尝试真正的DirectShow控制
             success = self._set_opencv_control_simple(device_index, control_name, value)
 
             if success:
+                # 真正成功设置了参数
                 return True
             else:
-                # 给出诚实的反馈
-                print(f"⚠️  参数 {control_name} 设置命令已发送，但摄像头可能不支持此功能")
-                print(f"   建议:")
-                print(f"   - 使用原厂摄像头软件进行控制")
-                print(f"   - 检查摄像头是否支持该参数")
-                print(f"   - 尝试以管理员权限运行")
+                # 设置失败，给出诚实的反馈
+                print(f"⚠️  参数 {control_name} 设置失败")
+                print(f"   可能原因:")
+                print(f"   - 摄像头不支持该参数")
+                print(f"   - 需要管理员权限")
+                print(f"   - 摄像头驱动限制")
+                print(f"   建议使用原厂摄像头软件进行控制")
 
-                # 返回True表示命令已尝试发送
-                return True
+                # 返回False表示设置失败
+                return False
 
         except Exception as e:
             print(f"设置控制参数失败: {e}")
             return False
 
     def _set_opencv_control_simple(self, device_index: int, control_name: str, value: int) -> bool:
-        """简化的OpenCV控制方法"""
+        """尝试使用真正的DirectShow COM接口控制摄像头"""
+        try:
+            # 尝试真正的DirectShow控制
+            return self._set_real_directshow_control(device_index, control_name, value)
+        except Exception:
+            return False
+
+    def _set_real_directshow_control(self, device_index: int, control_name: str, value: int) -> bool:
+        """使用OpenCV尝试真正的硬件控制"""
         try:
             import cv2
             import os
+            import time
 
             # 抑制OpenCV错误输出
             os.environ['OPENCV_LOG_LEVEL'] = 'SILENT'
@@ -487,40 +498,154 @@ class WindowsDirectShowController:
             # 映射到实际的OpenCV设备索引
             opencv_index = 0 if device_index >= 2 else device_index
 
-            # 快速测试是否能打开设备
             cap = cv2.VideoCapture(opencv_index)
             if not cap.isOpened():
                 return False
 
-            # 只尝试基本的控制参数
-            basic_controls = {
+            # OpenCV控制参数映射
+            opencv_controls = {
                 'brightness': cv2.CAP_PROP_BRIGHTNESS,
                 'contrast': cv2.CAP_PROP_CONTRAST,
                 'saturation': cv2.CAP_PROP_SATURATION,
                 'hue': cv2.CAP_PROP_HUE,
+                'gain': cv2.CAP_PROP_GAIN,
+                'exposure': cv2.CAP_PROP_EXPOSURE,
+                'sharpness': cv2.CAP_PROP_SHARPNESS,
+                'zoom': cv2.CAP_PROP_ZOOM,
+                'focus': cv2.CAP_PROP_FOCUS,
+                'pan': cv2.CAP_PROP_PAN,
+                'tilt': cv2.CAP_PROP_TILT,
             }
 
-            if control_name in basic_controls:
-                prop_id = basic_controls[control_name]
-
-                # 简单的值转换
-                if control_name == 'hue':
-                    opencv_value = (value + 15) / 30.0  # -15到15 -> 0到1
-                else:
-                    opencv_value = value / 100.0  # 0-100 -> 0-1
-
-                # 尝试设置
-                success = cap.set(prop_id, opencv_value)
+            if control_name not in opencv_controls:
                 cap.release()
-
-                # 对于基本参数，即使设置"成功"也可能没有实际效果
-                # 所以我们返回False，让调用者知道需要其他方法
                 return False
 
-            cap.release()
+            prop_id = opencv_controls[control_name]
+
+            # 获取当前值作为基准
+            original_value = cap.get(prop_id)
+
+            # 转换值到OpenCV范围
+            if control_name in ['brightness', 'contrast', 'saturation', 'gain', 'sharpness']:
+                opencv_value = value / 100.0
+            elif control_name == 'hue':
+                opencv_value = (value + 15) / 30.0
+            elif control_name == 'exposure':
+                opencv_value = (value + 13) / 12.0
+            elif control_name == 'pan':
+                opencv_value = (value + 145) / 290.0
+            elif control_name == 'tilt':
+                opencv_value = (value + 90) / 190.0
+            elif control_name == 'zoom':
+                opencv_value = (value - 100) / 300.0
+            elif control_name == 'focus':
+                opencv_value = value / 100.0
+            else:
+                opencv_value = value / 100.0
+
+            # 尝试设置参数
+            success = cap.set(prop_id, opencv_value)
+
+            if success:
+                # 等待设置生效
+                time.sleep(0.2)
+
+                # 验证设置是否真正生效
+                new_value = cap.get(prop_id)
+
+                # 检查值是否真正改变了
+                if abs(new_value - original_value) > 0.01:
+                    cap.release()
+                    return True
+                else:
+                    # 值没有改变，说明设置失败
+                    cap.release()
+                    return False
+            else:
+                cap.release()
+                return False
+
+        except Exception as e:
+            print(f"OpenCV控制失败: {e}")
             return False
 
-        except Exception:
+    def _set_control_via_com(self, device_filter, control_name: str, value: int) -> bool:
+        """通过COM接口设置控制参数"""
+        try:
+            # 用户控制参数映射（对应IAMVideoProcAmp）
+            user_controls = {
+                'brightness': 0,    # VideoProcAmp_Brightness
+                'contrast': 1,      # VideoProcAmp_Contrast
+                'hue': 2,          # VideoProcAmp_Hue
+                'saturation': 3,    # VideoProcAmp_Saturation
+                'sharpness': 4,     # VideoProcAmp_Sharpness
+                'gain': 9,         # VideoProcAmp_Gain
+                'whitebalance': 7   # VideoProcAmp_WhiteBalance
+            }
+
+            # 摄像头控制参数映射（对应IAMCameraControl）
+            camera_controls = {
+                'pan': 0,      # CameraControl_Pan
+                'tilt': 1,     # CameraControl_Tilt
+                'roll': 2,     # CameraControl_Roll
+                'zoom': 3,     # CameraControl_Zoom
+                'exposure': 4, # CameraControl_Exposure
+                'focus': 6     # CameraControl_Focus
+            }
+
+            # 处理自动模式
+            auto_mode = False
+            if control_name.endswith('_automatic'):
+                control_name = control_name.replace('_automatic', '')
+                auto_mode = True
+
+            # 尝试用户控制参数
+            if control_name in user_controls:
+                try:
+                    video_proc_amp = device_filter.QueryInterface(IID_IAMVideoProcAmp)
+                    prop_id = user_controls[control_name]
+
+                    # 获取当前值和标志
+                    current_val, current_flags = video_proc_amp.Get(prop_id)
+
+                    if auto_mode:
+                        # 设置自动/手动模式
+                        flags = 1 if value == 1 else 2  # Auto=1, Manual=2
+                        video_proc_amp.Set(prop_id, current_val, flags)
+                    else:
+                        # 设置具体数值
+                        video_proc_amp.Set(prop_id, value, current_flags)
+
+                    return True
+                except Exception as e:
+                    print(f"用户控制设置失败: {e}")
+
+            # 尝试摄像头控制参数
+            if control_name in camera_controls:
+                try:
+                    camera_control = device_filter.QueryInterface(IID_IAMCameraControl)
+                    prop_id = camera_controls[control_name]
+
+                    # 获取当前值和标志
+                    current_val, current_flags = camera_control.Get(prop_id)
+
+                    if auto_mode:
+                        # 设置自动/手动模式
+                        flags = 1 if value == 1 else 2  # Auto=1, Manual=2
+                        camera_control.Set(prop_id, current_val, flags)
+                    else:
+                        # 设置具体数值
+                        camera_control.Set(prop_id, value, current_flags)
+
+                    return True
+                except Exception as e:
+                    print(f"摄像头控制设置失败: {e}")
+
+            return False
+
+        except Exception as e:
+            print(f"COM控制参数设置失败: {e}")
             return False
 
     def _set_opencv_control(self, device_index: int, control_name: str, value: int) -> bool:
