@@ -135,94 +135,128 @@ class WindowsVideoController(VideoDeviceController):
 
 class LinuxVideoController(VideoDeviceController):
     """Linux平台视频设备控制器（使用V4L2）"""
-    
+
     def __init__(self):
         try:
+            from linux_v4l2 import LinuxV4L2Controller
+            self.v4l2 = LinuxV4L2Controller()
+        except ImportError as e:
+            print(f"V4L2实现导入失败: {e}")
+            # 使用简化实现作为备用
             import fcntl
             import os
             import glob
             self.fcntl = fcntl
             self.os = os
             self.glob = glob
-        except ImportError:
-            raise ImportError("Linux平台需要fcntl模块")
-    
+            self.v4l2 = None
+
     def list_devices(self) -> List[DeviceInfo]:
         """列出Linux视频设备"""
+        if self.v4l2:
+            return self.v4l2.list_devices()
+
+        # 备用实现
         devices = []
         device_files = self.glob.glob("/dev/video*")
-        
+
         for i, device_path in enumerate(sorted(device_files)):
             try:
                 # 尝试打开设备获取信息
                 with open(device_path, 'rb') as f:
-                    # TODO: 使用V4L2 ioctl获取设备信息
                     devices.append(DeviceInfo(
                         index=i,
                         name=f"Video Device {i}",
                         path=device_path,
-                        description=""
+                        description="V4L2 Device"
                     ))
             except Exception:
                 continue
-        
+
         return devices
-    
+
     def get_formats(self, device_index: int) -> List[VideoFormat]:
         """获取Linux设备支持的格式"""
-        # TODO: 实现V4L2格式查询
+        if self.v4l2:
+            return self.v4l2.get_video_formats(device_index)
         return []
-    
+
     def get_controls(self, device_index: int) -> List[ControlInfo]:
         """获取Linux设备控制参数"""
-        # TODO: 实现V4L2控制参数查询
+        if self.v4l2:
+            return self.v4l2.get_device_controls(device_index)
         return []
-    
+
     def set_control(self, device_index: int, control_name: str, value: int) -> bool:
         """设置Linux设备控制参数"""
-        # TODO: 实现V4L2控制参数设置
+        if self.v4l2:
+            return self.v4l2.set_device_control(device_index, control_name, value)
         return False
-    
+
     def get_control(self, device_index: int, control_name: str) -> Optional[int]:
         """获取Linux设备控制参数值"""
-        # TODO: 实现V4L2控制参数获取
+        controls = self.get_controls(device_index)
+        for ctrl in controls:
+            if ctrl.name == control_name:
+                return ctrl.current_value
         return None
 
 
 class MacOSVideoController(VideoDeviceController):
     """macOS平台视频设备控制器（使用AVFoundation）"""
-    
+
     def __init__(self):
+        self.avfoundation = None
         try:
-            import objc
-            self.objc = objc
-            # TODO: 导入AVFoundation框架
-        except ImportError:
-            raise ImportError("macOS平台需要安装pyobjc: pip install pyobjc")
-    
+            from macos_avfoundation import MacOSAVFoundationController
+            self.avfoundation = MacOSAVFoundationController()
+        except ImportError as e:
+            print(f"AVFoundation实现导入失败: {e}")
+            # 使用OpenCV作为备用
+            try:
+                from opencv_fallback import OpenCVVideoController
+                self.opencv_fallback = OpenCVVideoController()
+            except ImportError:
+                raise ImportError("macOS平台需要安装pyobjc或opencv: pip install pyobjc pyobjc-framework-AVFoundation opencv-python")
+
     def list_devices(self) -> List[DeviceInfo]:
         """列出macOS视频设备"""
-        # TODO: 实现AVFoundation设备枚举
+        if self.avfoundation:
+            return self.avfoundation.list_devices()
+        elif hasattr(self, 'opencv_fallback'):
+            return self.opencv_fallback.list_devices()
         return []
-    
+
     def get_formats(self, device_index: int) -> List[VideoFormat]:
         """获取macOS设备支持的格式"""
-        # TODO: 实现AVFoundation格式查询
+        if self.avfoundation:
+            return self.avfoundation.get_video_formats(device_index)
+        elif hasattr(self, 'opencv_fallback'):
+            return self.opencv_fallback.get_video_formats(device_index)
         return []
-    
+
     def get_controls(self, device_index: int) -> List[ControlInfo]:
         """获取macOS设备控制参数"""
-        # TODO: 实现AVFoundation控制参数查询
+        if self.avfoundation:
+            return self.avfoundation.get_device_controls(device_index)
+        elif hasattr(self, 'opencv_fallback'):
+            return self.opencv_fallback.get_device_controls(device_index)
         return []
-    
+
     def set_control(self, device_index: int, control_name: str, value: int) -> bool:
         """设置macOS设备控制参数"""
-        # TODO: 实现AVFoundation控制参数设置
+        if self.avfoundation:
+            return self.avfoundation.set_device_control(device_index, control_name, value)
+        elif hasattr(self, 'opencv_fallback'):
+            return self.opencv_fallback.set_device_control(device_index, control_name, value)
         return False
-    
+
     def get_control(self, device_index: int, control_name: str) -> Optional[int]:
         """获取macOS设备控制参数值"""
-        # TODO: 实现AVFoundation控制参数获取
+        controls = self.get_controls(device_index)
+        for ctrl in controls:
+            if ctrl.name == control_name:
+                return ctrl.current_value
         return None
 
 
